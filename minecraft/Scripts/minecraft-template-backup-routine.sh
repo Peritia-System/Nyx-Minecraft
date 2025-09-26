@@ -20,6 +20,9 @@ PV_BIN="@PV_BIN@"
 DU_BIN="@DU_BIN@"
 BZIP2_BIN="@BZIP2_BIN@"
 XZ_BIN="@XZ_BIN@"
+WC_BIN="@WC_BIN@"
+FIND_BIN="@FIND_BIN@"
+
 
 # Convenience wrappers 
 rsync_cmd="$RSYNC_BIN"
@@ -35,11 +38,29 @@ pv_cmd="$PV_BIN"
 du_cmd="$DU_BIN"
 bzip2_cmd="$BZIP2_BIN"
 xz_cmd="$XZ_BIN"
+wc_cmd="$WC_BIN"
+find_cmd="$FIND_BIN"
+
+
 
 # PATH extension 
 # (only figured that out later if you add it here it can actually just use the bin)
 # So you can easily just switch out the "*_cmd" with the "normal" name 
-export PATH="$(dirname "$GZIP_BIN")":"$(dirname "$ZSTD_BIN")":"$(dirname "$PV_BIN")":"$(dirname "$DU_BIN")":"$(dirname "$BZIP2_BIN")":"$(dirname "$XZ_BIN")":"$PATH"
+# Extend PATH with all injected binaries so we can call them directly
+for bin in \
+  "$GZIP_BIN" \
+  "$ZSTD_BIN" \
+  "$PV_BIN" \
+  "$DU_BIN" \
+  "$BZIP2_BIN" \
+  "$XZ_BIN" \
+  "$WC_BIN" \
+  "$FIND_BIN"
+do
+  export PATH="$(dirname "$bin"):$PATH"
+done
+
+
 
 # Defaults 
 REBOOT=false
@@ -49,15 +70,17 @@ DESTINATION="/srv/minecraft/backups/unknown"
 PURE=false
 FORMAT="tar"
 COMPRESSION="gzip"
+PROGRESS_INTERVAL=5   # default to 5 seconds
 
 # Usage 
 usage() {
   cat <<EOF
 Usage: $0 [--reboot] [--sleep <seconds>] [--full] [--destination <path>] [--pure]
-          [--format <tar|zip>] [--compression <gzip|bzip2|xz|zstd>]
+          [--format <tar|zip>] [--compression <gzip|bzip2|xz|zstd>] [--progressInterval <seconds>]
 
   --reboot        Stop server before backup and start afterwards [DOES NOT WORK]
   --sleep N       Wait N seconds with countdown announcements
+  --progressInterval N    Wait N seconds with interval announcements (default: 5)
   --full          Backup entire server directory (default: world only)
   --destination X Backup target directory (default: /srv/minecraft/backups/unknown)
   --pure          Use rsync to copy files (no compression, symlinks resolved)
@@ -78,6 +101,7 @@ while [[ $# -gt 0 ]]; do
     --pure) echo "[DEBUG] Flag: --pure"; PURE=true; shift ;;
     --format) echo "[DEBUG] Flag: --format $2"; FORMAT="$2"; shift 2 ;;
     --compression) echo "[DEBUG] Flag: --compression $2"; COMPRESSION="$2"; shift 2 ;;
+    --progressInterval) echo "[DEBUG] Flag: --progressInterval $2"; PROGRESS_INTERVAL="$2"; shift 2 ;;
     --help) usage ;;
     *) echo "[ERROR] Unknown option: $1"; usage ;;
   esac
@@ -170,213 +194,153 @@ countdown() {
 
 
 do_backup() {
-  #echo "[DEBUG] Entering do_backup with args: $*"
-  local source=""
-  local destination=""
-  local compression="gzip"
-  local format="tar"
-  local pure=false
- 
-  # parse args
+  local backup_source=""
+  local backup_destination=""
+  local backup_compression="gzip"
+  local backup_format="tar"
+  local backup_pure=false
+  local progress_interval=$PROGRESS_INTERVAL
+
+  # Parse args
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --source)      source="$2"; shift 2 ;;
-      --destination) destination="$2"; shift 2 ;;
-      --compression) compression="$2"; shift 2 ;;
-      --format)      format="$2"; shift 2 ;;
-      --pure)        pure=true; shift ;;
-
+      --source)      backup_source="$2"; shift 2 ;;
+      --destination) backup_destination="$2"; shift 2 ;;
+      --compression) backup_compression="$2"; shift 2 ;;
+      --format)      backup_format="$2"; shift 2 ;;
+      --pure)        backup_pure=true; shift ;;
       *) echo "[ERROR] Unknown option to do_backup: $1"; return 1 ;;
     esac
   done
 
-
-  if [[ -z "$source" || -z "$destination" ]]; then
+  if [[ -z "$backup_source" || -z "$backup_destination" ]]; then
     echo "[ERROR] Missing --source or --destination"
     return 1
   fi
 
   local timestamp="$(date +%Y%m%d-%H%M%S)"
-  local full_source="$DATA_DIR/$source"
-  local basename="$(basename "$source")"
-  local archive=""
-  local ext=""
+  local full_source_path="$DATA_DIR/$backup_source"
+  local source_basename="$(basename "$backup_source")"
+  local archive_path=""
+  local archive_ext=""
 
-
-  if [[ ! -d "$full_source" ]]; then
-    echo "[ERROR] Source directory not found: $full_source"
+  if [[ ! -d "$full_source_path" ]]; then
+    echo "[ERROR] Source directory not found: $full_source_path"
     return 1
   fi
 
-  mkdir -p "$destination"
+  mkdir -p "$backup_destination"
 
-  if [[ "$pure" == true ]]; then
-    local target_dir="$destination/${basename}-${timestamp}"
-    echo "[INFO] Performing pure rsync backup to $target_dir"
-    echo "#####"
+  # PURE (rsync) backup
+  if [[ "$backup_pure" == true ]]; then
+    local target_path="$backup_destination/${source_basename}-${timestamp}"
+    echo "[INFO] Performing pure rsync backup to $target_path"
 
-    local last_percentage=-1
+    local progress_last_percent=-1
+    local progress_last_time=$(date +%s)
 
     "$rsync_cmd" -rptgoDL --delete --info=progress2 --stats \
-        "$full_source/" "$target_dir/" 2>&1 | \
+        "$full_source_path/" "$target_path/" 2>&1 | \
         while IFS= read -r -d $'\r' chunk; do
-            # Extract percentage
-            if [[ $chunk =~ ([0-9]{1,3})% ]]; then
-                current_percentage=${BASH_REMATCH[1]}
-                # Print only if percentage changed
-                if [[ $current_percentage -ne $last_percentage ]]; then
-                    echo -e "Progress: ${current_percentage}%\r" | say "$@"
-                    last_percentage=$current_percentage
-                fi
+          if [[ $chunk =~ ([0-9]{1,3})% ]]; then
+            local progress_percent=${BASH_REMATCH[1]}
+            local now=$(date +%s)
+            if [[ $progress_percent -ne $progress_last_percent ]] && \
+               (( now - progress_last_time >= progress_interval )); then
+              say "Progress: ${progress_percent}%"
+              progress_last_percent=$progress_percent
+              progress_last_time=$now
             fi
+          fi
         done
-
-
     return 0
   fi
 
-#echo "[DEBUG] Using archive mode: format=$format compression=$compression"
-# Archive/compression backup 
+  # ARCHIVE backup
+  case "$backup_format" in
+    tar)
+      case "$backup_compression" in
+        none)  archive_ext="tar";    tar_create=( "$tar_cmd" -cvf ) ;;
+        gzip)  archive_ext="tar.gz"; tar_create=( "$tar_cmd" --use-compress-program="$gzip_cmd" -cvf ) ;;
+        bzip2) archive_ext="tar.bz2";tar_create=( "$tar_cmd" --use-compress-program="$bzip2_cmd" -cvf ) ;;
+        xz)    archive_ext="tar.xz"; tar_create=( "$tar_cmd" --use-compress-program="$xz_cmd" -cvf ) ;;
+        zstd)  archive_ext="tar.zst";tar_create=( "$tar_cmd" --use-compress-program="$zstd_cmd" -cvf ) ;;
+        *) echo "[ERROR] Unsupported tar compression: $backup_compression" >&2; return 1 ;;
+      esac
 
-case "$format" in
-  tar)
-    # Map compression → extension and tar invocation (using only *_cmd vars)
-    case "$compression" in
-      none)
-        ext="tar"
-        tar_create=( "$tar_cmd" -cvf )
-        ;;
-      gzip)
-        ext="tar.gz"
-        tar_create=( "$tar_cmd" --use-compress-program="$gzip_cmd" -cvf )
-        ;;
-      bzip2)
-        ext="tar.bz2"
-        tar_create=( "$tar_cmd" --use-compress-program="$bzip2_cmd" -cvf )
-        ;;
-      xz)
-        ext="tar.xz"
-        tar_create=( "$tar_cmd" --use-compress-program="$xz_cmd" -cvf )
-        ;;
-      zstd)
-        ext="tar.zst"
-        tar_create=( "$tar_cmd" --use-compress-program="$zstd_cmd" -cvf )
-        ;;
-      *)
-        echo "[ERROR] Unsupported tar compression: $compression" >&2
-        exit 1
-        ;;
-    esac
+      archive_path="$backup_destination/${source_basename}-${timestamp}.${archive_ext}"
+      echo "[INFO] Creating tar archive $archive_path"
 
-    archive="$destination/${basename}-${timestamp}.${ext}"
-    sources=( $source )
-    for s in "${sources[@]}"; do
-      if [[ ! -e "$DATA_DIR/$s" ]]; then
-        echo "[ERROR] Source not found under DATA_DIR: $DATA_DIR/$s" >&2
-        exit 1
-      fi
-    done
+      local progress_total=$(find "$full_source_path" | wc -l)
+      local progress_done=0
+      local progress_last_percent=-1
+      local progress_last_time=$(date +%s)
 
-    # Count total items for progress (files + dirs)
-    total_items=0
-    for s in "${sources[@]}"; do
-      count=$(find "$DATA_DIR/$s" | wc -l)
-      total_items=$(( total_items + count ))
-    done
-    current=0
-
-    echo "[INFO] Creating $archive"
-
-    last_percent=-1
-    last_info_time=$(date +%s)
-    # seconds between info logs
-    interval=2
-
-    (
-      "${tar_create[@]}" "$archive" -C "$DATA_DIR" "${sources[@]}"
-    ) 2>&1 | while read -r line; do
-      if [[ -n "$line" ]]; then
-        current=$(( current + 1 ))
-        if (( total_items > 0 )); then
-          percent=$(( current * 100 / total_items ))
-
-          # echo full percent:
-          #echo "[DEBUG] Progress: ${percent}%"
-          now=$(date +%s)
-          if (( percent != last_percent )) && (( now - last_info_time >= interval )); then
-            #echo "[INFO] Progress: ${percent}%"
-            say "Progress: ${percent}%" 
-            last_percent=$percent
-            last_info_time=$now
+      (
+        "${tar_create[@]}" "$archive_path" -C "$DATA_DIR" "$backup_source"
+      ) 2>&1 | while read -r line; do
+        if [[ -n "$line" ]]; then
+          progress_done=$(( progress_done + 1 ))
+          if (( progress_total > 0 )); then
+            local progress_percent=$(( progress_done * 100 / progress_total ))
+            local now=$(date +%s)
+            if (( progress_percent != progress_last_percent )) && \
+               (( now - progress_last_time >= progress_interval )); then
+              say "Progress: ${progress_percent}%"
+              progress_last_percent=$progress_percent
+              progress_last_time=$now
+            fi
           fi
         fi
-      fi
-    done
+      done
 
-    # Ensure 100% gets printed once at the end
-    if (( last_percent < 100 )); then
-      #echo "[INFO] Progress: 100%"
-       say "Progress: 100%" 
-    
-    fi
+      [[ $progress_last_percent -lt 100 ]] && say "Progress: 100%"
+      echo "[INFO] Tar archive created: $archive_path"
+      ;;
 
-    echo "[INFO] Tar archive created: $archive"
-    ;;
+    zip)
+      archive_path="$backup_destination/${source_basename}-${timestamp}.zip"
+      echo "[INFO] Creating zip archive $archive_path"
 
-  zip)
-    ext="zip"
-    archive="$destination/${basename}-${timestamp}.${ext}"
-    echo "[INFO] Creating zip archive $archive"
+      local progress_total=$(find "$full_source_path" | wc -l)
+      local progress_done=0
+      local progress_last_percent=-1
+      local progress_last_time=$(date +%s)
 
-    # Count both files and directories
-    total_items=$(find "$DATA_DIR/$source" | wc -l)
-    current=0
-
-    last_percent=-1
-    last_info_time=$(date +%s)
-    interval=2   # seconds between info logs
-
-    (
-      cd "$DATA_DIR"
-      "$zip_cmd" -r "$archive" "$source"
-    ) 2>&1 | while read -r line; do
-      if [[ $line =~ adding: ]]; then
-        current=$((current+1))
-        if (( total_items > 0 )); then
-          percent=$(( current * 100 / total_items ))
-
-          #echo "[DEBUG] Progress: ${percent}%"
-
-          now=$(date +%s)
-          if (( percent != last_percent )) && (( now - last_info_time >= interval )); then
-            #echo "[INFO] Progress: ${percent}%"
-            say "Progress: ${percent}%" 
-            last_percent=$percent
-            last_info_time=$now
+      (
+        cd "$DATA_DIR"
+        "$zip_cmd" -r "$archive_path" "$backup_source"
+      ) 2>&1 | while read -r line; do
+        if [[ $line =~ adding: ]]; then
+          progress_done=$(( progress_done + 1 ))
+          if (( progress_total > 0 )); then
+            local progress_percent=$(( progress_done * 100 / progress_total ))
+            local now=$(date +%s)
+            if (( progress_percent != progress_last_percent )) && \
+               (( now - progress_last_time >= progress_interval )); then
+              say "Progress: ${progress_percent}%"
+              progress_last_percent=$progress_percent
+              progress_last_time=$now
+            fi
           fi
         fi
-      fi
-    done
+      done
 
-    # Ensure 100% gets printed once at the end
-    if (( last_percent < 100 )); then
-      #echo "[INFO] Progress: 100%"
-       say "Progress: 100%"  
-    fi
+      [[ $progress_last_percent -lt 100 ]] && say "Progress: 100%"
+      echo "[INFO] Zip archive created: $archive_path"
+      ;;
 
-    echo "[INFO] Zip archive created: $archive"
-    ;;
+    *)
+      echo "[ERROR] Unsupported format: $backup_format"
+      return 1
+      ;;
+  esac
 
-  *)
-    echo "[ERROR] Unsupported format: $format"
-    return 1
-    ;;
-esac
-
-echo "[INFO] Backup completed: $archive"
-return 0
-
+  echo "[INFO] Backup completed: $archive_path"
+  return 0
 }
+
+
 
 
 # MAIN
@@ -400,7 +364,6 @@ if (( SLEEP_TIME > 0 )); then
   countdown "$SLEEP_TIME"
 fi
 
-
 mkdir -p "$DESTINATION"
 
 echo "[INFO] Running backup of $BACKUP_MODE to $DESTINATION..."
@@ -415,6 +378,5 @@ else
   echo "[ERROR] Backup failed!"
   exit 1
 fi
-
 
 say "Backup ($BACKUP_MODE) completed successfully."
