@@ -400,10 +400,8 @@ in {
                   "ZSTD_BIN=${pkgs.zstd}/bin/zstd"
                   # add more bin here
 
-
-
                   # Not properly enough tested
-                  # 
+                  #
                   #scheduleCfg.customEnviorment
                 ];
                 ExecStart = pkgs.writeShellScript "minecraft-${serverName}-${scheduleName}.sh" ''
@@ -436,7 +434,8 @@ in {
               # it will run the service on each rebuild.
               # i dont want that you can enable it if you like
             };
-          }) serverCfg.schedules
+          })
+          serverCfg.schedules
       )
       cfg.servers
     );

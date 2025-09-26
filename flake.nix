@@ -6,7 +6,12 @@
     nix-minecraft.url = "github:Infinidoge/nix-minecraft";
   };
 
-  outputs = { self, nixpkgs, nix-minecraft, ... }: {
+  outputs = {
+    self,
+    nixpkgs,
+    nix-minecraft,
+    ...
+  }: {
     nixosModules.minecraft-servers = {
       config,
       lib,
