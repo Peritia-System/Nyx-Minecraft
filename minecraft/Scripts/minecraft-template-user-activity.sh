@@ -37,6 +37,27 @@ bzip2_cmd="$BZIP2_BIN"
 xz_cmd="$XZ_BIN"
 
 
+
+# PATH extension 
+# (only figured that out later if you add it here it can actually just use the bin)
+# So you can easily just switch out the "*_cmd" with the "normal" name 
+# Extend PATH with all injected binaries so we can call them directly
+for bin in \
+  "$GZIP_BIN" \
+  "$ZSTD_BIN" \
+  "$AWK_BIN" \
+  "$PV_BIN" \
+  "$DU_BIN" \
+  "$BZIP2_BIN" \
+  "$XZ_BIN" \
+  "$WC_BIN" \
+  "$FIND_BIN"
+do
+  export PATH="$(dirname "$bin"):$PATH"
+done
+
+
+
 # Provided by systemd Environment
 QUERY_BIN="${QUERY_BIN:-minecraft-${SERVER_NAME}-query}"
 
@@ -50,7 +71,7 @@ OUTPUT="$($QUERY_BIN || true)"
 
 PLAYER_LINE="$(echo "$OUTPUT" | grep '^players:' || true)"
 
-ONLINE="$(echo "$PLAYER_LINE" | awk_cmd '{print $2}' | cut -d/ -f1)"
+ONLINE="$(echo "$PLAYER_LINE" | awk '{print $2}' | cut -d/ -f1)"
 
 if [[ -z "$ONLINE" || "$ONLINE" == "0" ]]; then
   echo "[$TIMESTAMP] No user detected" >> "$ACTIVITY_FILE"
