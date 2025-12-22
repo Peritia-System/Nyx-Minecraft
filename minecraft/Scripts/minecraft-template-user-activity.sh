@@ -20,6 +20,9 @@ PV_BIN="@PV_BIN@"
 DU_BIN="@DU_BIN@"
 BZIP2_BIN="@BZIP2_BIN@"
 XZ_BIN="@XZ_BIN@"
+WC_BIN="@WC_BIN@"
+FIND_BIN="@FIND_BIN@"
+
 
 # Convenience wrappers 
 rsync_cmd="$RSYNC_BIN"
@@ -35,7 +38,8 @@ pv_cmd="$PV_BIN"
 du_cmd="$DU_BIN"
 bzip2_cmd="$BZIP2_BIN"
 xz_cmd="$XZ_BIN"
-
+wc_cmd="$WC_BIN"
+find_cmd="$FIND_BIN"
 
 
 # PATH extension 
