@@ -407,6 +407,7 @@ in {
             backupBin = mkScript serverName serverCfg "backup";
             sayBin = mkScript serverName serverCfg "say";
             routineBin = mkScript serverName serverCfg "backup-routine";
+            userActivityBin = mkScript serverName serverCfg "backup-routine";
           in {
             name = "minecraft-${serverName}-${scheduleName}";
             value = {
@@ -418,7 +419,7 @@ in {
                 Environment = [
                   "RCON_BIN=${rconBin}/bin/minecraft-${serverName}-rcon"
                   "QUERY_BIN=${queryBin}/bin/minecraft-${serverName}-query"
-                  "USERACTIVITY_BIN=${queryBin}/bin/minecraft-${serverName}-user-activity"
+                  "USERACTIVITY_BIN=${userActivityBin}/bin/minecraft-${serverName}-user-activity"
                   "BACKUP_BIN=${backupBin}/bin/minecraft-${serverName}-backup"
                   "SAY_BIN=${sayBin}/bin/minecraft-${serverName}-say"
                   "ROUTINE_BIN=${routineBin}/bin/minecraft-${serverName}-backup-routine"
