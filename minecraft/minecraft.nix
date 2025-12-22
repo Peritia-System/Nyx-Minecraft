@@ -407,7 +407,7 @@ in {
             backupBin = mkScript serverName serverCfg "backup";
             sayBin = mkScript serverName serverCfg "say";
             routineBin = mkScript serverName serverCfg "backup-routine";
-            userActivityBin = mkScript serverName serverCfg "backup-routine";
+            userActivityBin = mkScript serverName serverCfg "user-activity";
           in {
             name = "minecraft-${serverName}-${scheduleName}";
             value = {
