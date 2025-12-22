@@ -72,6 +72,10 @@ FORMAT="tar"
 COMPRESSION="gzip"
 PROGRESS_INTERVAL=5   # default to 5 seconds
 
+CHECK_USER=false
+USER_ACTIVITY_FILE="UserActivity"
+
+
 # Usage 
 usage() {
   cat <<EOF
@@ -86,6 +90,8 @@ Usage: $0 [--reboot] [--sleep <seconds>] [--full] [--destination <path>] [--pure
   --pure          Use rsync to copy files (no compression, symlinks resolved)
   --format X      Archive format: tar or zip (ignored if --pure)
   --compression X Compression for tar (default: gzip)
+  --check-user   Only run backup if unbackuped user activity exists
+
 EOF
   exit 1
 }
@@ -102,6 +108,8 @@ while [[ $# -gt 0 ]]; do
     --format) echo "[DEBUG] Flag: --format $2"; FORMAT="$2"; shift 2 ;;
     --compression) echo "[DEBUG] Flag: --compression $2"; COMPRESSION="$2"; shift 2 ;;
     --progressInterval) echo "[DEBUG] Flag: --progressInterval $2"; PROGRESS_INTERVAL="$2"; shift 2 ;;
+    --check-user) echo "[DEBUG] Flag: --check-user"; CHECK_USER=true; shift ;;
+
     --help) usage ;;
     *) echo "[ERROR] Unknown option: $1"; usage ;;
   esac
@@ -190,6 +198,37 @@ countdown() {
 
   echo
   say "Countdown finished. Starting backup now."
+}
+
+
+
+check_user_activity() {
+  local activity_file="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+
+  if [[ ! -f "$activity_file" ]]; then
+    echo "[WARN] User activity file not found: $activity_file"
+    return 1
+  fi
+
+  # Find unbackuped login lines
+  if ! grep -E 'was logged in' "$activity_file" | grep -vq '\[backuped\]'; then
+    echo "[INFO] No unbackuped user activity detected."
+    return 1
+  fi
+
+  echo "[INFO] Unbackuped user activity detected."
+  return 0
+}
+
+mark_user_activity_backuped() {
+  local activity_file="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+
+  # Append [backuped] to all unbackuped login lines
+  sed -i \
+    -e '/was logged in/{
+          /\[backuped\]/! s/$/ [backuped]/
+        }' \
+    "$activity_file"
 }
 
 
@@ -347,6 +386,15 @@ do_backup() {
 
 #echo "[DEBUG] FULL=$FULL"
 
+if [[ "$CHECK_USER" == true ]]; then
+  echo "[INFO] Running in --check-user mode"
+  if ! check_user_activity; then
+    echo "[INFO] Skipping backup due to no user activity."
+    exit 0
+  fi
+fi
+
+
 if [[ "$FULL" == true ]]; then
   BACKUP_SOURCE="${SERVER_NAME}"
   BACKUP_MODE="full server directory"
@@ -374,6 +422,11 @@ if do_backup \
       --compression "$COMPRESSION" \
       --format "$FORMAT"; then
   echo "[INFO] Backup finished successfully."
+  if [[ "$CHECK_USER" == true ]]; then
+    mark_user_activity_backuped
+    echo "[INFO] User activity marked as backuped."
+  fi
+
 else
   echo "[ERROR] Backup failed!"
   exit 1

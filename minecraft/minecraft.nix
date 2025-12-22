@@ -291,6 +291,30 @@ in {
             description = "Declarative Minecraft server.properties values.";
           };
 
+          # userActivity = {
+          #   enable = mkOption {
+          #     type = types.bool;
+          #     default = false;
+          #     description = ''
+          #       Enable periodic user activity logging for this server.
+          #       Writes to <dataDir>/<server>/UserActivity and is used by
+          #       backup --check-user.
+          #     '';
+          #   };
+
+          #   interval = mkOption {
+          #     type = types.str;
+          #     default = "5min";
+          #     example = "1min";
+          #     description = ''
+          #       How often user activity should be logged.
+          #       Uses systemd.time format (e.g. 30s, 1min, 5min).
+          #     '';
+          #   };
+          # };
+
+
+
           schedules = mkOption {
             type = types.attrsOf (types.submodule ({name, ...}: {
               options = {
@@ -457,6 +481,46 @@ in {
       cfg.servers
     );
 
+
+#     systemd.services = lib.mkMerge (
+#       lib.mapAttrsToList (serverName: serverCfg:
+#         lib.mkIf serverCfg.userActivity.enable {
+#           "minecraft-${serverName}-user-activity" = {
+#             description = "Minecraft ${serverName} user activity logger";
+#             serviceConfig = {
+#               Type = "oneshot";
+#               User = cfg.user;
+#               Group = cfg.group;
+#               Environment = [
+#                 "QUERY_BIN=${mkScript serverName serverCfg "query"}/bin/minecraft-${serverName}-query"
+#               ];
+#               ExecStart =
+#                 "${mkScript serverName serverCfg "user-activity"}/bin/minecraft-${serverName}-user-activity";
+#             };
+#           };
+#         }
+#       ) cfg.servers
+#     );
+
+
+# systemd.timers = lib.mkMerge (
+#   lib.mapAttrsToList (serverName: serverCfg:
+#     lib.mkIf serverCfg.userActivity.enable {
+#       "minecraft-${serverName}-user-activity" = {
+#         description = "Timer for Minecraft ${serverName} user activity logging";
+#         wantedBy = [ "timers.target" ];
+#         timerConfig = {
+#           OnBootSec = "2min";
+#           OnUnitActiveSec = serverCfg.userActivity.interval;
+#           AccuracySec = "30s";
+#         };
+#       };
+#     }
+#   ) cfg.servers
+# );
+
+
+
     # this is building the scripts for the user
     # Those are the prewritten scripts from the ./Script dir
     environment.systemPackages = lib.flatten (
@@ -466,6 +530,7 @@ in {
         (mkScript serverName serverCfg "backup")
         (mkScript serverName serverCfg "say")
         (mkScript serverName serverCfg "backup-routine")
+        (mkScript serverName serverCfg "user-activity")
       ])
       cfg.servers
     );
