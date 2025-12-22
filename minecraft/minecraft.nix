@@ -418,6 +418,7 @@ in {
                 Environment = [
                   "RCON_BIN=${rconBin}/bin/minecraft-${serverName}-rcon"
                   "QUERY_BIN=${queryBin}/bin/minecraft-${serverName}-query"
+                  "USERACTIVITY_BIN=${queryBin}/bin/minecraft-${serverName}-user-activity"
                   "BACKUP_BIN=${backupBin}/bin/minecraft-${serverName}-backup"
                   "SAY_BIN=${sayBin}/bin/minecraft-${serverName}-say"
                   "ROUTINE_BIN=${routineBin}/bin/minecraft-${serverName}-backup-routine"
@@ -438,6 +439,8 @@ in {
                   echo "  $BACKUP_BIN"
                   echo "  $SAY_BIN"
                   echo "  $ROUTINE_BIN"
+                  echo "  $USERACTIVITY_BIN"
+
 
                   # this is so it can use the scripts the same way you would run them:
                   minecraft-${serverName}-query() { $QUERY_BIN "$@"; }
@@ -445,7 +448,7 @@ in {
                   minecraft-${serverName}-backup() { $BACKUP_BIN "$@"; }
                   minecraft-${serverName}-say() { $SAY_BIN "$@"; }
                   minecraft-${serverName}-backup-routine() { $ROUTINE_BIN "$@"; }
-                  minecraft-${serverName}-query
+                  minecraft-${serverName}-user-activity() { $USERACTIVITY_BIN "$@"; }
 
                   # her your code will go:
                   ${scheduleCfg.code}
