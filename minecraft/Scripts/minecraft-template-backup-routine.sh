@@ -201,35 +201,53 @@ countdown() {
 }
 
 
+build_backup_signature() {
+  local sig=()
+
+  [[ "$FULL" == true ]] && sig+=("full") || sig+=("world")
+  [[ "$PURE" == true ]] && sig+=("pure")
+
+  sig+=("format=$FORMAT")
+  sig+=("compression=$COMPRESSION")
+
+  IFS=','; echo "${sig[*]}"
+}
 
 check_user_activity() {
   local activity_file="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+  local marker="[backuped:${BACKUP_SIGNATURE}]"
 
   if [[ ! -f "$activity_file" ]]; then
     echo "[WARN] User activity file not found: $activity_file"
     return 1
   fi
 
-  # Find unbackuped login lines
-  if ! grep -E 'was logged in' "$activity_file" | grep -vq '\[backuped\]'; then
-    echo "[INFO] No unbackuped user activity detected."
+  # Find login lines NOT marked with the current backup signature
+  if ! grep -E 'was logged in' "$activity_file" | grep -vqF "$marker"; then
+    echo "[INFO] No unbackuped user activity detected for signature: $BACKUP_SIGNATURE"
     return 1
   fi
 
-  echo "[INFO] Unbackuped user activity detected."
+  echo "[INFO] Unbackuped user activity detected for signature: $BACKUP_SIGNATURE"
   return 0
 }
 
 mark_user_activity_backuped() {
   local activity_file="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+  local marker="[backuped:${BACKUP_SIGNATURE}]"
 
-  # Append [backuped] to all unbackuped login lines
+  [[ -z "${ACTIVITY_LINE_CUTOFF:-}" || "$ACTIVITY_LINE_CUTOFF" -le 0 ]] && return 0
+
+  # Only mark lines that existed before the backup started
   sed -i \
-    -e '/was logged in/{
-          /\[backuped\]/! s/$/ [backuped]/
-        }' \
+    -e "1,${ACTIVITY_LINE_CUTOFF}{
+          /was logged in/{
+            /$marker/! s/\$/ $marker/
+          }
+        }" \
     "$activity_file"
 }
+
 
 
 do_backup() {
@@ -385,6 +403,15 @@ do_backup() {
 # MAIN
 
 #echo "[DEBUG] FULL=$FULL"
+
+BACKUP_SIGNATURE="$(build_backup_signature)"
+
+ACTIVITY_LINE_CUTOFF=0
+
+if [[ "$CHECK_USER" == true ]]; then
+  ACTIVITY_LINE_CUTOFF=$(wc -l < "$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE")
+fi
+
 
 if [[ "$CHECK_USER" == true ]]; then
   echo "[INFO] Running in --check-user mode"
