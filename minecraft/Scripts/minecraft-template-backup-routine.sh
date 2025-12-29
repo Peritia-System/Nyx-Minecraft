@@ -236,16 +236,20 @@ mark_user_activity_backuped() {
   local activity_file="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
   local marker="[backuped:${BACKUP_SIGNATURE}]"
 
-  [[ -z "${ACTIVITY_LINE_CUTOFF:-}" || "$ACTIVITY_LINE_CUTOFF" -le 0 ]] && return 0
+  [[ "$ACTIVITY_LINE_CUTOFF" -le 0 ]] && return 0
 
-  # Only mark lines that existed before the backup started
-  sed -i \
-    -e "1,${ACTIVITY_LINE_CUTOFF}{
-          /was logged in/{
-            /$marker/! s/\$/ $marker/
-          }
-        }" \
-    "$activity_file"
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v cutoff="$ACTIVITY_LINE_CUTOFF" -v marker="$marker" '
+    NR <= cutoff && /was logged in/ && index($0, marker) == 0 {
+      print $0 " " marker
+      next
+    }
+    { print }
+  ' "$activity_file" > "$tmp"
+
+  mv "$tmp" "$activity_file"
 }
 
 
@@ -408,10 +412,6 @@ BACKUP_SIGNATURE="$(build_backup_signature)"
 
 ACTIVITY_LINE_CUTOFF=0
 
-if [[ "$CHECK_USER" == true ]]; then
-  ACTIVITY_LINE_CUTOFF=$(wc -l < "$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE")
-fi
-
 
 if [[ "$CHECK_USER" == true ]]; then
   echo "[INFO] Running in --check-user mode"
@@ -420,6 +420,14 @@ if [[ "$CHECK_USER" == true ]]; then
     exit 0
   fi
 fi
+
+
+if [[ "$CHECK_USER" == true ]]; then
+  ACTIVITY_FILE="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+  ACTIVITY_LINE_CUTOFF=$(wc -l < "$ACTIVITY_FILE")
+  echo "[DEBUG] Activity cutoff set to line $ACTIVITY_LINE_CUTOFF"
+fi
+
 
 
 if [[ "$FULL" == true ]]; then
