@@ -48,6 +48,13 @@ find_cmd="$FIND_BIN"
 # So you can easily just switch out the "*_cmd" with the "normal" name 
 # Extend PATH with all injected binaries so we can call them directly
 for bin in \
+  "$RSYNC_BIN" \
+  "$MCSTATUS_BIN" \
+  "$MCRCON_BIN" \
+  "$AWK_BIN" \
+  "$TAR_BIN" \
+  "$ZIP_BIN" \
+  "$UNZIP_BIN" \
   "$GZIP_BIN" \
   "$ZSTD_BIN" \
   "$PV_BIN" \
@@ -59,6 +66,8 @@ for bin in \
 do
   export PATH="$(dirname "$bin"):$PATH"
 done
+
+
 
 
 
