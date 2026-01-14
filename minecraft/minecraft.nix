@@ -216,17 +216,17 @@ in {
 
           customJVMOpts = mkOption {
             description = "Additional JVM options";
-            type = types.coercedTo
+            type =
+              types.coercedTo
               types.str
               (lib.splitString " ")
               (types.listOf types.str);
-            default = [ ];
+            default = [];
             example = [
               "-Dminecraft.api.env=custom"
               "-Dminecraft.api.auth.host=https://mcauth.example.space/auth"
             ];
           };
-
 
           operators = mkOption {
             type = types.attrsOf (
@@ -385,7 +385,7 @@ in {
               "-Xmx${serverCfg.memory.max}"
               "-Xms${serverCfg.memory.min}"
             ]
-      ++ serverCfg.customJVMOpts
+            ++ serverCfg.customJVMOpts
           );
 
           autoStart = serverCfg.autoStart;
