@@ -214,6 +214,14 @@ in {
             '';
           };
 
+          customJVMOpts = mkOpt' (
+            with types;
+              coercedTo
+              (listOf str)
+              (lib.concatStringsSep " ")
+              (separatedString " ")
+          ) "" "Custom JVM options for this server.";
+
           operators = mkOption {
             type = types.attrsOf (
               types.coercedTo minecraftUUID (v: {uuid = v;}) (
@@ -313,8 +321,6 @@ in {
           #   };
           # };
 
-
-
           schedules = mkOption {
             type = types.attrsOf (types.submodule ({name, ...}: {
               options = {
@@ -367,7 +373,15 @@ in {
         lib.mapAttrs (serverName: serverCfg: {
           enable = serverCfg.enable;
           package = serverCfg.package;
-          jvmOpts = "-Xmx${serverCfg.memory.max} -Xms${serverCfg.memory.min}";
+
+          jvmOpts = lib.concatStringsSep " " (
+            [
+              "-Xmx${serverCfg.memory.max}"
+              "-Xms${serverCfg.memory.min}"
+            ]
+            ++ lib.optional (serverCfg.customJVMOpts != "") serverCfg.customJVMOpts
+          );
+
           autoStart = serverCfg.autoStart;
 
           symlinks = serverCfg.symlinks;
@@ -485,45 +499,41 @@ in {
       cfg.servers
     );
 
+    #     systemd.services = lib.mkMerge (
+    #       lib.mapAttrsToList (serverName: serverCfg:
+    #         lib.mkIf serverCfg.userActivity.enable {
+    #           "minecraft-${serverName}-user-activity" = {
+    #             description = "Minecraft ${serverName} user activity logger";
+    #             serviceConfig = {
+    #               Type = "oneshot";
+    #               User = cfg.user;
+    #               Group = cfg.group;
+    #               Environment = [
+    #                 "QUERY_BIN=${mkScript serverName serverCfg "query"}/bin/minecraft-${serverName}-query"
+    #               ];
+    #               ExecStart =
+    #                 "${mkScript serverName serverCfg "user-activity"}/bin/minecraft-${serverName}-user-activity";
+    #             };
+    #           };
+    #         }
+    #       ) cfg.servers
+    #     );
 
-#     systemd.services = lib.mkMerge (
-#       lib.mapAttrsToList (serverName: serverCfg:
-#         lib.mkIf serverCfg.userActivity.enable {
-#           "minecraft-${serverName}-user-activity" = {
-#             description = "Minecraft ${serverName} user activity logger";
-#             serviceConfig = {
-#               Type = "oneshot";
-#               User = cfg.user;
-#               Group = cfg.group;
-#               Environment = [
-#                 "QUERY_BIN=${mkScript serverName serverCfg "query"}/bin/minecraft-${serverName}-query"
-#               ];
-#               ExecStart =
-#                 "${mkScript serverName serverCfg "user-activity"}/bin/minecraft-${serverName}-user-activity";
-#             };
-#           };
-#         }
-#       ) cfg.servers
-#     );
-
-
-# systemd.timers = lib.mkMerge (
-#   lib.mapAttrsToList (serverName: serverCfg:
-#     lib.mkIf serverCfg.userActivity.enable {
-#       "minecraft-${serverName}-user-activity" = {
-#         description = "Timer for Minecraft ${serverName} user activity logging";
-#         wantedBy = [ "timers.target" ];
-#         timerConfig = {
-#           OnBootSec = "2min";
-#           OnUnitActiveSec = serverCfg.userActivity.interval;
-#           AccuracySec = "30s";
-#         };
-#       };
-#     }
-#   ) cfg.servers
-# );
-
-
+    # systemd.timers = lib.mkMerge (
+    #   lib.mapAttrsToList (serverName: serverCfg:
+    #     lib.mkIf serverCfg.userActivity.enable {
+    #       "minecraft-${serverName}-user-activity" = {
+    #         description = "Timer for Minecraft ${serverName} user activity logging";
+    #         wantedBy = [ "timers.target" ];
+    #         timerConfig = {
+    #           OnBootSec = "2min";
+    #           OnUnitActiveSec = serverCfg.userActivity.interval;
+    #           AccuracySec = "30s";
+    #         };
+    #       };
+    #     }
+    #   ) cfg.servers
+    # );
 
     # this is building the scripts for the user
     # Those are the prewritten scripts from the ./Script dir
