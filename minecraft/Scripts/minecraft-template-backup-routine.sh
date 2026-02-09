@@ -270,6 +270,7 @@ do_backup() {
   local backup_format="tar"
   local backup_pure=false
   local progress_interval=$PROGRESS_INTERVAL
+  local full_source_path=""
 
   # Parse args
   while [[ $# -gt 0 ]]; do
@@ -289,7 +290,13 @@ do_backup() {
   fi
 
   local timestamp="$(date +%Y%m%d-%H%M%S)"
-  local full_source_path="$DATA_DIR/$backup_source"
+
+  if [[ "$backup_source" = /* ]]; then
+    full_source_path="$backup_source"
+  else
+    full_source_path="$DATA_DIR/$backup_source"
+  fi
+
   local source_basename="$(basename "$backup_source")"
   local archive_path=""
   local archive_ext=""
@@ -410,8 +417,42 @@ do_backup() {
   return 0
 }
 
+delta_sync_snapshot() {
+  if [[ -z "${SNAPSHOT_DIR:-}" ]]; then
+    echo "[ERROR] SNAPSHOT_DIR is not set"
+    return 1
+  fi
 
+  if [[ ! -d "$DATA_DIR/$SERVER_NAME" ]]; then
+    echo "[ERROR] Source directory not found: $DATA_DIR/$SERVER_NAME"
+    return 1
+  fi
 
+  local progress_last_percent=-1
+  local progress_last_time
+  progress_last_time=$(date +%s)
+
+  "$rsync_cmd" -rptgoDL --delete --info=progress2 --stats \
+  "$DATA_DIR/$SERVER_NAME/" \
+  "$SNAPSHOT_DIR/" 2>&1 | \
+  while IFS= read -r -d $'\r' chunk; do
+    if [[ $chunk =~ ([0-9]{1,3})% ]]; then
+      local progress_percent="${BASH_REMATCH[1]}"
+      local now
+      now=$(date +%s)
+
+      if [[ $progress_percent -ne $progress_last_percent ]] && \
+          (( now - progress_last_time >= PROGRESS_INTERVAL )); then
+        say "Snapshot sync progress: ${progress_percent}%"
+        progress_last_percent=$progress_percent
+        progress_last_time=$now
+      fi
+    fi
+  done
+
+  [[ $progress_last_percent -lt 100 ]] && say "Snapshot sync progress: 100%"
+  return 0
+}
 
 # MAIN
 
@@ -457,6 +498,28 @@ if (( SLEEP_TIME > 0 )); then
 fi
 
 mkdir -p "$DESTINATION"
+
+echo "[INFO] Make Snapshot dir..."
+SNAPSHOT_DIR="${DATA_DIR}/${SERVER_NAME}_snapshot"
+mkdir -p "$SNAPSHOT_DIR"
+
+say "Updating the Snapshot it could take a moment"
+
+delta_sync_snapshot
+
+
+say "Backing up Server now "
+
+if [[ "$FULL" == true ]]; then
+  BACKUP_SOURCE="${SNAPSHOT_DIR}"
+  BACKUP_MODE="full server directory"
+  DESTINATION="${DESTINATION}/Full"
+else
+  BACKUP_SOURCE="${SNAPSHOT_DIR}/world"
+  BACKUP_MODE="world folder only"
+  DESTINATION="${DESTINATION}/World"
+fi
+
 
 echo "[INFO] Running backup of $BACKUP_MODE to $DESTINATION..."
 if do_backup \
