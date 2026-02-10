@@ -22,6 +22,7 @@ BZIP2_BIN="@BZIP2_BIN@"
 XZ_BIN="@XZ_BIN@"
 WC_BIN="@WC_BIN@"
 FIND_BIN="@FIND_BIN@"
+TMUX_BIN="@TMUX_BIN@"
 
 
 # Convenience wrappers 
@@ -40,6 +41,7 @@ bzip2_cmd="$BZIP2_BIN"
 xz_cmd="$XZ_BIN"
 wc_cmd="$WC_BIN"
 find_cmd="$FIND_BIN"
+tmux_cmd="$TMUX_BIN"
 
 
 
@@ -62,7 +64,9 @@ for bin in \
   "$BZIP2_BIN" \
   "$XZ_BIN" \
   "$WC_BIN" \
-  "$FIND_BIN"
+  "$FIND_BIN" \
+  "$TMUX_BIN"
+  
 do
   export PATH="$(dirname "$bin"):$PATH"
 done

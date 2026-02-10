@@ -68,6 +68,7 @@ with lib; let
         "@DU_BIN@"
         "@BZIP2_BIN@"
         "@XZ_BIN@"
+        "@TMUX_BIN@"
       ]
       # If you add anything here make sure to add it at the systemd service too
       [
@@ -89,6 +90,7 @@ with lib; let
         "${pkgs.coreutils}/bin/du"
         "${pkgs.bzip2}/bin/bzip2"
         "${pkgs.xz}/bin/xz"
+        "${pkgs.tmux}/bin/tmux"
       ]
       rawText;
   in
@@ -426,6 +428,7 @@ in {
             queryBin = mkScript serverName serverCfg "query";
             backupBin = mkScript serverName serverCfg "backup";
             sayBin = mkScript serverName serverCfg "say";
+            consoleBin = mkScript serverName serverCfg "console";
             routineBin = mkScript serverName serverCfg "backup-routine";
             userActivityBin = mkScript serverName serverCfg "user-activity";
           in {
@@ -442,6 +445,7 @@ in {
                   "USERACTIVITY_BIN=${userActivityBin}/bin/minecraft-${serverName}-user-activity"
                   "BACKUP_BIN=${backupBin}/bin/minecraft-${serverName}-backup"
                   "SAY_BIN=${sayBin}/bin/minecraft-${serverName}-say"
+                  "CONSOLE_BIN=${sayBin}/bin/minecraft-${serverName}-console"
                   "ROUTINE_BIN=${routineBin}/bin/minecraft-${serverName}-backup-routine"
                   "ZSTD_BIN=${pkgs.zstd}/bin/zstd"
                   # add more bin here
@@ -459,6 +463,7 @@ in {
                   echo "  $QUERY_BIN"
                   echo "  $BACKUP_BIN"
                   echo "  $SAY_BIN"
+                  echo "  $CONSOLE_BIN"
                   echo "  $ROUTINE_BIN"
                   echo "  $USERACTIVITY_BIN"
 
@@ -468,6 +473,7 @@ in {
                   minecraft-${serverName}-rcon() { $RCON_BIN "$@"; }
                   minecraft-${serverName}-backup() { $BACKUP_BIN "$@"; }
                   minecraft-${serverName}-say() { $SAY_BIN "$@"; }
+                  minecraft-${serverName}-console() { $CONSOLE_BIN "$@"; }
                   minecraft-${serverName}-backup-routine() { $ROUTINE_BIN "$@"; }
                   minecraft-${serverName}-user-activity() { $USERACTIVITY_BIN "$@"; }
 
@@ -549,6 +555,7 @@ in {
         (mkScript serverName serverCfg "query")
         (mkScript serverName serverCfg "backup")
         (mkScript serverName serverCfg "say")
+        (mkScript serverName serverCfg "console")
         (mkScript serverName serverCfg "backup-routine")
         (mkScript serverName serverCfg "user-activity")
       ])

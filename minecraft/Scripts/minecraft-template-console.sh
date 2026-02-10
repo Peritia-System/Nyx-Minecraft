@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-
 # Injected by Nix 
 RSYNC_BIN="@RSYNC_BIN@"
 DATA_DIR="@DATA_DIR@"
@@ -44,6 +43,8 @@ wc_cmd="$WC_BIN"
 find_cmd="$FIND_BIN"
 tmux_cmd="$TMUX_BIN"
 
+
+
 # PATH extension 
 # (only figured that out later if you add it here it can actually just use the bin)
 # So you can easily just switch out the "*_cmd" with the "normal" name 
@@ -72,6 +73,12 @@ done
 
 
 
+# tmux socket path (matches systemd service)
+SOCK_PATH="/run/minecraft/${SERVER_NAME}.sock"
 
-# Query the server
-exec $mcstatus_cmd query
+if [[ ! -S "$SOCK_PATH" ]]; then
+  echo "Minecraft tmux socket not found: $SOCK_PATH" >&2
+  exit 1
+fi
+
+exec tmux -S "$SOCK_PATH" attach
