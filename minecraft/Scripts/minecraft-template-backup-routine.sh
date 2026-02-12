@@ -506,7 +506,10 @@ fi
 
 
 cleanup() {
-  say "Something went wrong"
+  if [[ "$backup_failed" == true ]]; then
+    say "Something went wrong"
+  fi
+
   say "Ensuring automatic world saves are re-enabled..."
   $mcrcon_cmd save-on >/dev/null 2>&1 || true
 }
@@ -522,6 +525,7 @@ say "Initiating backup procedure..."
 
 say "Disabling automatic world saves to ensure data consistency..."
 
+backup_failed=true
 trap cleanup EXIT
 
 $mcrcon_cmd save-off
@@ -533,11 +537,14 @@ say "Starting incremental snapshot sync. This may take a moment depending on wor
 
 if delta_sync_snapshot; then
   say "Snapshot sync completed successfully."
+
 else
   say "WARNING: Snapshot sync encountered errors."
   exit 1
 fi
 
+say "Renabling automatic world saves..."
+$mcrcon_cmd save-on
 
 say "Backing up Server now "
 
@@ -560,6 +567,7 @@ if do_backup \
       --compression "$COMPRESSION" \
       --format "$FORMAT"; then
   echo "[INFO] Backup finished successfully."
+  backup_failed=false
   if [[ "$CHECK_USER" == true ]]; then
     mark_user_activity_backuped
     echo "[INFO] User activity marked as backuped."
@@ -569,5 +577,6 @@ else
   echo "[ERROR] Backup failed!"
   exit 1
 fi
+
 
 say "Backup ($BACKUP_MODE) completed successfully."
