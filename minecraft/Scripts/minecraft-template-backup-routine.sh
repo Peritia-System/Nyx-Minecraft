@@ -87,6 +87,7 @@ PROGRESS_INTERVAL=5   # default to 5 seconds
 
 CHECK_USER=false
 USER_ACTIVITY_FILE="UserActivity"
+BROADCAST_TO_SERVER=true
 
 
 # Usage 
@@ -179,8 +180,13 @@ say_with_color() {
 }
 
 say() {
-  echo "[INFO] $1"
-  say_with_color yellow "$1"
+  local say_message="$1"
+
+  echo "[INFO] $say_message"
+
+  if [[ "$BROADCAST_TO_SERVER" == "true" ]]; then
+    say_with_color yellow "$say_message"
+  fi
 }
 
 
@@ -464,6 +470,8 @@ delta_sync_snapshot() {
 
 #echo "[DEBUG] FULL=$FULL"
 
+BROADCAST_TO_SERVER=true
+
 BACKUP_SIGNATURE="$(build_backup_signature)"
 
 ACTIVITY_LINE_CUTOFF=0
@@ -545,6 +553,10 @@ fi
 
 say "Renabling automatic world saves..."
 $mcrcon_cmd save-on
+
+
+say "Thanks for the pacience. The Backup will now commence in the background :)"
+BROADCAST_TO_SERVER=false
 
 say "Backing up Server now "
 
