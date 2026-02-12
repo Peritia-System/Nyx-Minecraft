@@ -436,7 +436,9 @@ delta_sync_snapshot() {
   local progress_last_time
   progress_last_time=$(date +%s)
 
-  "$rsync_cmd" -rptgoDL --delete --info=progress2 --stats \
+  #"$rsync_cmd" -rptgoDL --delete --info=progress2 --stats \
+  # may result in root owning files for example mods 
+  "$rsync_cmd" -rptL --delete-after --info=progress2 --stats \
   "$DATA_DIR/$SERVER_NAME/" \
   "$SNAPSHOT_DIR/" 2>&1 | \
   while IFS= read -r -d $'\r' chunk; do
@@ -501,15 +503,40 @@ if (( SLEEP_TIME > 0 )); then
   countdown "$SLEEP_TIME"
 fi
 
-mkdir -p "$DESTINATION"
 
-echo "[INFO] Make Snapshot dir..."
+
+cleanup() {
+  say "Something went wrong"
+  say "Ensuring automatic world saves are re-enabled..."
+  $mcrcon_cmd save-on >/dev/null 2>&1 || true
+}
+
+
+
+mkdir -p "$DESTINATION"
+echo "[INFO] Preparing snapshot directory..."
 SNAPSHOT_DIR="${DATA_DIR}/${SERVER_NAME}_snapshot"
 mkdir -p "$SNAPSHOT_DIR"
 
-say "Updating the Snapshot it could take a moment"
+say "Initiating backup procedure..."
 
-delta_sync_snapshot
+say "Disabling automatic world saves to ensure data consistency..."
+
+trap cleanup EXIT
+
+$mcrcon_cmd save-off
+
+say "Forcing world save to disk..."
+$mcrcon_cmd save-all
+
+say "Starting incremental snapshot sync. This may take a moment depending on world size..."
+
+if delta_sync_snapshot; then
+  say "Snapshot sync completed successfully."
+else
+  say "WARNING: Snapshot sync encountered errors."
+  exit 1
+fi
 
 
 say "Backing up Server now "
