@@ -358,7 +358,15 @@ do_backup() {
     full_source_path="$DATA_DIR/$backup_source"
   fi
 
-  local source_basename="$(basename "$backup_source")"
+  local source_basename
+
+  # If backing up from snapshot dir, normalize name
+  if [[ "$(basename "$backup_source")" == "${SERVER_NAME}_snapshot" ]]; then
+    source_basename="$SERVER_NAME"
+  else
+    source_basename="$(basename "$backup_source")"
+  fi
+  
   local archive_path=""
   local archive_ext=""
 
