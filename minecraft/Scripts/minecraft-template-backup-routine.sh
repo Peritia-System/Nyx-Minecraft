@@ -179,17 +179,68 @@ say_with_color() {
   $mcrcon_cmd "say $full_message"
 }
 
+
+tellraw() {
+  local color="$1"
+  shift
+  local message="$*"
+
+  # Escape message
+  local escaped
+  escaped=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+  local json
+  json="[
+    {\"text\":\"[Backup] \",\"color\":\"gold\",\"bold\":true},
+    {\"text\":\"$escaped\",\"color\":\"$color\"}
+  ]"
+
+  #echo "[DEBUG] Sending RCON say: $message"
+  $mcrcon_cmd "tellraw @a $json" >/dev/null 2>&1 || {
+    say_with_color yellow "$message"
+
+  }
+}
+
 say() {
   local say_message="$1"
 
   echo "[INFO] $say_message"
 
   if [[ "$BROADCAST_TO_SERVER" == "true" ]]; then
-    say_with_color yellow "$say_message"
+    if check_for_players; then
+      tellraw gray "$say_message"
+    else 
+      say_with_color yellow "$say_message"
+    fi
   fi
 }
 
+check_for_players() {
+  local output
+  local online_count
 
+  # Capture mcstatus output safely
+  if ! output="$($mcstatus_cmd 2>/dev/null)"; then
+    echo "[WARN] Could not query server status."
+    return 1
+  fi
+
+  # Extract number before the slash (e.g. 3 from 3/20)
+  online_count=$(echo "$output" | grep -Eo 'players: [0-9]+' | awk '{print $2}')
+
+  # Fallback if parsing fails
+  if [[ -z "$online_count" ]]; then
+    echo "[WARN] Could not determine player count."
+    return 1
+  fi
+
+  if (( online_count > 0 )); then
+    return 0   # true → players online
+  else
+    return 1   # false → no players
+  fi
+}
 
 countdown() {
   local seconds="$1"
@@ -466,51 +517,6 @@ delta_sync_snapshot() {
   return 0
 }
 
-# MAIN
-
-#echo "[DEBUG] FULL=$FULL"
-
-BROADCAST_TO_SERVER=true
-
-BACKUP_SIGNATURE="$(build_backup_signature)"
-
-ACTIVITY_LINE_CUTOFF=0
-
-
-if [[ "$CHECK_USER" == true ]]; then
-  echo "[INFO] Running in --check-user mode"
-  if ! check_user_activity; then
-    echo "[INFO] Skipping backup due to no user activity."
-    exit 0
-  fi
-fi
-
-
-if [[ "$CHECK_USER" == true ]]; then
-  ACTIVITY_FILE="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
-  ACTIVITY_LINE_CUTOFF=$(wc -l < "$ACTIVITY_FILE")
-  echo "[DEBUG] Activity cutoff set to line $ACTIVITY_LINE_CUTOFF"
-fi
-
-
-
-if [[ "$FULL" == true ]]; then
-  BACKUP_SOURCE="${SERVER_NAME}"
-  BACKUP_MODE="full server directory"
-  DESTINATION="${DESTINATION}/Full"
-else
-  BACKUP_SOURCE="${SERVER_NAME}/world"
-  BACKUP_MODE="world folder only"
-  DESTINATION="${DESTINATION}/World"
-fi
-
-say "Backup for ($BACKUP_MODE) initiated"
-
-# Pre-backup wait 
-if (( SLEEP_TIME > 0 )); then
-  countdown "$SLEEP_TIME"
-fi
-
 
 
 cleanup() {
@@ -523,25 +529,78 @@ cleanup() {
 }
 
 
+# ─────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────
 
-mkdir -p "$DESTINATION"
+BROADCAST_TO_SERVER=true
+backup_failed=true
+
+BACKUP_SIGNATURE="$(build_backup_signature)"
+
+ACTIVITY_LINE_CUTOFF=0
+
+# ─── Optional user-activity check ─────────────────────────────
+
+if [[ "$CHECK_USER" == true ]]; then
+  echo "[INFO] Running in --check-user mode"
+
+  if ! check_user_activity; then
+    echo "[INFO] Skipping backup due to no user activity."
+    exit 0
+  fi
+
+  ACTIVITY_FILE="$DATA_DIR/$SERVER_NAME/$USER_ACTIVITY_FILE"
+  ACTIVITY_LINE_CUTOFF=$(wc -l < "$ACTIVITY_FILE")
+  echo "[DEBUG] Activity cutoff set to line $ACTIVITY_LINE_CUTOFF"
+fi
+
+# ─── Decide final destination (ONLY ONCE) ─────────────────────
+
+BASE_DESTINATION="$DESTINATION"
+
+if [[ "$FULL" == true ]]; then
+  BACKUP_MODE="full server directory"
+  FINAL_DESTINATION="${BASE_DESTINATION}/Full"
+else
+  BACKUP_MODE="world folder only"
+  FINAL_DESTINATION="${BASE_DESTINATION}/World"
+fi
+
+say "Backup for ($BACKUP_MODE) initiated"
+
+# ─── Optional countdown ───────────────────────────────────────
+
+if (( SLEEP_TIME > 0 )); then
+  countdown "$SLEEP_TIME"
+fi
+
+# ─── Cleanup trap (always re-enable saves) ────────────────────
+
+cleanup() {
+  if [[ "$backup_failed" == true ]]; then
+    say "Something went wrong during backup!"
+  fi
+
+  say "Ensuring automatic world saves are re-enabled..."
+  $mcrcon_cmd save-on >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
+# ─── Prepare snapshot directory ───────────────────────────────
+
 echo "[INFO] Preparing snapshot directory..."
 SNAPSHOT_DIR="${DATA_DIR}/${SERVER_NAME}_snapshot"
 mkdir -p "$SNAPSHOT_DIR"
 
-say "Initiating backup procedure..."
-
-say "Disabling automatic world saves to ensure data consistency..."
-
-backup_failed=true
-trap cleanup EXIT
-
+say "Disabling automatic world saves..."
 $mcrcon_cmd save-off
 
 say "Forcing world save to disk..."
 $mcrcon_cmd save-all
 
-say "Starting incremental snapshot sync. This may take a moment depending on world size..."
+say "Starting incremental snapshot sync. This may take a moment..."
 
 if delta_sync_snapshot; then
   say "Snapshot sync completed successfully."
@@ -551,35 +610,36 @@ else
   exit 1
 fi
 
-say "Renabling automatic world saves..."
+say "Re-enabling automatic world saves..."
 $mcrcon_cmd save-on
 
+# ─── Background archive phase ──────────────────────────────────
 
 say "Thanks for the pacience. The Backup will now commence in the background :)"
 BROADCAST_TO_SERVER=false
 
-say "Backing up Server now "
-
+# Determine actual source AFTER snapshot
 if [[ "$FULL" == true ]]; then
-  BACKUP_SOURCE="${SNAPSHOT_DIR}"
-  BACKUP_MODE="full server directory"
-  DESTINATION="${DESTINATION}/Full"
+  BACKUP_SOURCE="$SNAPSHOT_DIR"
 else
-  BACKUP_SOURCE="${SNAPSHOT_DIR}/world"
-  BACKUP_MODE="world folder only"
-  DESTINATION="${DESTINATION}/World"
+  BACKUP_SOURCE="$SNAPSHOT_DIR/world"
 fi
 
+DESTINATION="$FINAL_DESTINATION"
+mkdir -p "$DESTINATION"
 
 echo "[INFO] Running backup of $BACKUP_MODE to $DESTINATION..."
+
 if do_backup \
       --source "$BACKUP_SOURCE" \
       --destination "$DESTINATION" \
       $([[ "$PURE" == true ]] && echo "--pure") \
       --compression "$COMPRESSION" \
       --format "$FORMAT"; then
+
   echo "[INFO] Backup finished successfully."
   backup_failed=false
+
   if [[ "$CHECK_USER" == true ]]; then
     mark_user_activity_backuped
     echo "[INFO] User activity marked as backuped."
