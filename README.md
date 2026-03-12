@@ -2,6 +2,22 @@
 
 This NixOS module extends [Infinidoge/nix-minecraft](https://github.com/Infinidoge/nix-minecraft) with additional features for managing multiple Minecraft servers declaratively.
 
+
+> [!WARNING]  
+> This Repo moved!  
+> Please visit: [The New Repository](https://git.alovely.space/Nyx/Nyx-Minecraft)  
+
+
+> [!WARNING]  
+> This Repo moved!  
+> Please visit: [The New Repository](https://git.alovely.space/Nyx/Nyx-Minecraft)  
+
+
+> [!WARNING]  
+> This Repo moved!  
+> Please visit: [The New Repository](https://git.alovely.space/Nyx/Nyx-Minecraft)  
+
+
 ## Features
 
 - Declarative configuration of multiple Minecraft servers
